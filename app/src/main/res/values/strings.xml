@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">PlatformTracability</string>
+    <string name="title_activity_login">PlatformTracability</string>
+
+    <string name="login">Nom d\'utilisateur</string>
+    <string name="password">Mot de passe</string>
+    <string name="connect">Connexion</string>
+    <string name="emprunt">Emprunter</string>
+    <string name="rendu">Rendre</string>
+
+    <string name="request_error">request error</string>
+
+    <string name="hostname">134.214.236.17</string>
+    <string name="port">80</string>
+
+</resources>
