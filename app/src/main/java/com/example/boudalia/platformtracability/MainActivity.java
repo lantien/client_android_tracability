@@ -2,19 +2,28 @@ package com.example.boudalia.platformtracability;
 
 import android.Manifest;
 
+import android.annotation.SuppressLint;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
 import android.location.Location;
 import android.os.Handler;
 import android.os.Looper;
+import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.app.DialogFragment;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.util.SparseArray;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
@@ -30,6 +39,7 @@ import com.android.volley.Request;
 import com.android.volley.RequestQueue;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
+import com.android.volley.toolbox.JsonArrayRequest;
 import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -86,13 +96,16 @@ public class MainActivity extends AppCompatActivity {
     private BarcodeDetector myBarcodeDetector;
     private CameraSource myCamera;
 
-    private double longitude = -1;
-    private double latitude = -1;
+    private double longitude = 181;
+    private double latitude = 181;
 
     private Button renduRequest;
 
+    private Button retButton;
+    private Button signaleButton;
+
     private Button empruntRequest;
-    CheckBox myBox;
+
 
     ImageView myImg;
 
@@ -103,16 +116,61 @@ public class MainActivity extends AppCompatActivity {
     Spinner mySpinner;
     ArrayAdapter<String> adapter;
 
+    private String appID;
+
+    makeReport myRep;
+
+    Response.ErrorListener myErrorListener;
+
+    SurfaceHolder.Callback surfCallback;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        Toolbar myToolbar = findViewById(R.id.my_toolbar);
+        setSupportActionBar(myToolbar);
+
+        myErrorListener = new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+
+                Log.d(TAG,"ERROR IN REQUEST" + error.getMessage());
+            }
+        };
+
+        surfCallback = new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(SurfaceHolder holder) {
+
+                try {
+                    myCamera.start(cameraPreview.getHolder());
+                } catch(SecurityException e) {
+
+                    e.printStackTrace();
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+
+            @Override
+            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+                Log.d(TAG, "surface changed !");
+            }
+
+            @Override
+            public void surfaceDestroyed(SurfaceHolder holder) {
+                Log.d(TAG, "surface destroyed !");
+            }
+        };
+
+
         myImg = findViewById(R.id.imageDroit);
 
         myProject = new HashMap<>();
-        myBox = findViewById(R.id.is_incident);//make project spinner visible
 
 
         url = "http://" + getResources().getString(R.string.hostname) + ":" +
@@ -167,6 +225,45 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+
+        retButton = findViewById(R.id.retButton);
+
+        retButton.setOnClickListener(new View.OnClickListener() {
+            @SuppressLint("MissingPermission")
+            @Override
+            public void onClick(View v) {
+                //cameraPreview.setAlpha(1);
+                findViewById(R.id.layoutInfo).setVisibility(View.INVISIBLE);
+                retButton.setVisibility(View.GONE);
+                appImg.setVisibility(View.GONE);
+                findViewById(R.id.loadImg).setVisibility(View.GONE);
+                findViewById(R.id.textQRCODE).setVisibility(View.GONE);
+                makeButtonInvisble();
+                currentQR = "";
+                //demarreCameraEtDetecteur();
+            }
+        });
+
+        myRep = new makeReport();
+
+        signaleButton = findViewById(R.id.signalerIncident);
+
+        signaleButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+                Bundle b = new Bundle();
+
+                b.putString("appId", appID);
+                b.putString("token", token);
+                b.putString("userId", userID);
+
+                myRep.setArguments(b);
+
+                myRep.show(getFragmentManager(), TAG);
+            }
+        });
+
             mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
 
@@ -187,6 +284,8 @@ public class MainActivity extends AppCompatActivity {
 
             };
 
+
+
     }
 
     private void constructDetector() {
@@ -203,31 +302,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void initCamera() {
 
-        cameraPreview.getHolder().addCallback(new SurfaceHolder.Callback() {
-            @Override
-            public void surfaceCreated(SurfaceHolder holder) {
-
-                        try {
-                            myCamera.start(cameraPreview.getHolder());
-                        } catch(SecurityException e) {
-
-                            e.printStackTrace();
-
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-            }
-
-            @Override
-            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-
-            }
-
-            @Override
-            public void surfaceDestroyed(SurfaceHolder holder) {
-
-            }
-        });
+        cameraPreview.getHolder().addCallback(surfCallback);
     }
 
     private void initDetector() {
@@ -347,20 +422,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onRestart() {
-        super.onRestart();
-        onPause();
-        onResume();
-    }
-
-    @Override
     protected void onPause() {
         super.onPause();
 
-        if(myCamera != null) {
-
-            myCamera.stop();
-        }
         stopLocationUpdates();
     }
 
@@ -368,12 +432,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onStop() {
         super.onStop();
 
-        if(myCamera != null) {
-
-            myCamera.stop();
-        }
-        stopLocationUpdates();
     }
+
+
 
     private void stopLocationUpdates() {
         mFusedLocationClient.removeLocationUpdates(mLocationCallback);
@@ -396,7 +457,7 @@ public class MainActivity extends AppCompatActivity {
                 empruntRequest.setVisibility(View.INVISIBLE);
                 renduRequest.setVisibility(View.INVISIBLE);
 
-                myBox.setVisibility(View.INVISIBLE);
+                signaleButton.setVisibility(View.INVISIBLE);
                 mySpinner.setVisibility(View.INVISIBLE);
                 myImg.setImageResource(0);
 
@@ -410,8 +471,8 @@ public class MainActivity extends AppCompatActivity {
 
         JSONObject data = new JSONObject();
         try {
-            data.put("latitude",latitude);
-            data.put("longitude",longitude);
+            data.put("latitude", latitude);
+            data.put("longitude", longitude);
             data.put("id_appareil",id);
             data.put("id", userID);
 
@@ -428,10 +489,15 @@ public class MainActivity extends AppCompatActivity {
 
 
             if(method == 2) {
-                android.widget.CheckBox myBox = findViewById(R.id.is_incident);
-                if(myBox.isChecked()) {
+
+
+                if(myRep.is_send_report) {
+
                     data.put("incident",true);//make post to incident
+                    data.put("incident_id", myRep.id_report);//make post to incident
+
                 } else {
+
                     data.put("incident",false);
                 }
             }
@@ -440,10 +506,7 @@ public class MainActivity extends AppCompatActivity {
 
         }
 
-        final String mRequestBody = data.toString();
-
-
-        JsonObjectRequest jsObjRequest = new JsonObjectRequest(method,pathRequest,null,
+        new makeRequest(method, pathRequest, token, data,
                 new Response.Listener<JSONObject>() {
                     @Override
                     public void onResponse(final JSONObject response) {
@@ -453,51 +516,14 @@ public class MainActivity extends AppCompatActivity {
                         makeButtonInvisble();
 
                     }
-                },
-                new Response.ErrorListener() {
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-
-                        Log.d(TAG,"ERROR IN EMPRUNT" + error.toString());
-                    }
-                })
-
-        {
-            @Override
-            public String getBodyContentType() {
-                return "application/json; charset=utf-8";
-            }
-
-            @Override
-            public Map<String, String> getHeaders() {
-                Map<String, String>  params = new HashMap<>();
-                params.put("x-access-token", token);
-
-                return params;
-            }
-
-            @Override
-            public byte[] getBody() {
-                try {
-                    return mRequestBody == null ? null : mRequestBody.getBytes("utf-8");
-                } catch (UnsupportedEncodingException uee) {
-                    Log.d(TAG, "ERROR IN GET BODY");
-                    return null;
-                }
-            }
-
-        };
-
-        // Access the RequestQueue through your singleton class.
-        queue.add(jsObjRequest);
+                }, myErrorListener, queue);
     }
 
     private void makeDispoRequest(String id) {
 
-        String pathRequest = url + "/api/emprunt/"+ id +"?token=" + token;
+        String pathRequest = url + "/api/emprunt/"+ id;// +"?token=" + token;
 
-
-        JsonObjectRequest jsObjRequest = new JsonObjectRequest(Request.Method.GET,pathRequest,null,
+        new makeRequest(Request.Method.GET, pathRequest, token, new JSONObject(),
                 new Response.Listener<JSONObject>() {
                     @Override
                     public void onResponse(JSONObject response) {
@@ -513,8 +539,8 @@ public class MainActivity extends AppCompatActivity {
                             } else {
 
                                 renduRequest.setVisibility(View.VISIBLE);
-                                myBox.setChecked(false);
-                                myBox.setVisibility(View.VISIBLE);
+
+                                signaleButton.setVisibility(View.VISIBLE);
                             }
 
 
@@ -523,58 +549,39 @@ public class MainActivity extends AppCompatActivity {
                         }
 
                     }
-                },
-                new Response.ErrorListener() {
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-
-                        Log.d(TAG,"ERROR IN REQUEST DISPO" + error.toString());
-                    }
-                })
-
-        {
-            @Override
-            public String getBodyContentType() {
-                return "application/json; charset=utf-8";
-            }
-
-        };
-
-        // Access the RequestQueue through your singleton class.
-        queue.add(jsObjRequest);
+                }, myErrorListener, queue);
     }
 
-    private void makeProjetRequest(JSONArray id) {
-        String pathRequest;
+    private void makeMyGroupeRequest(String id) {
+        String pathRequest = url + "/api/groupe/get/" + id + "?token=" + token;
 
-        for(int i = 0 ; i < id.length(); i++) {
 
-            try {
-
-                pathRequest = url + "/api/projets/" + id.get(i) + "?token=" + token;
-                JsonObjectRequest jsObjRequest = new JsonObjectRequest(Request.Method.GET, pathRequest, null,
-                        new Response.Listener<JSONObject>() {
+            JsonArrayRequest jsObjRequest = new JsonArrayRequest(Request.Method.GET, pathRequest, null,
+                        new Response.Listener<JSONArray>() {
                             @Override
-                            public void onResponse(final JSONObject response) {
+                            public void onResponse(final JSONArray response) {
 
-                                Log.d(TAG, "Projet Response: " + response.toString());
+                                Log.d(TAG, "groupe Response: " + response.toString());
+                                for (int i = 0; i < response.length(); i++) {
 
-                                try {
-                                    myProject.put(response.getString("nom"),response.getString("_id"));
-
-                                    list.add(response.getString("nom"));
-                                    refreshSpinner();
-
-                                } catch(JSONException e) {
-                                    e.printStackTrace();
+                                    try {
+                                        JSONObject row = response.getJSONObject(i);
+                                        String nom = row.getString("nom");
+                                        myProject.put(nom,row.getString("_id"));
+                                        list.add(nom);
+                                    } catch(JSONException e) {
+                                        e.printStackTrace();
+                                    }
                                 }
+                                refreshSpinner();
+
                             }
                         },
                         new Response.ErrorListener() {
                             @Override
                             public void onErrorResponse(VolleyError error) {
 
-                                Log.d(TAG, "ERROR IN PROJET REQUEST " + error.toString());
+                                Log.d(TAG, "ERROR IN GROUPE REQUEST " + error.toString());
                             }
                         })
 
@@ -588,64 +595,29 @@ public class MainActivity extends AppCompatActivity {
 
                 // Access the RequestQueue through your singleton class.
                 queue.add(jsObjRequest);
-            } catch(JSONException e) {
-                e.printStackTrace();
-            }
-
-        }
     }
 
-    private void getProfil(String id, final int para) {
+    private void getProfil(final String id, final int para) {
 
-        String pathRequest = url + "/api/users/" + id + "?token=" + token;
+        String pathRequest = url + "/api/users/" + id;// + "?token=" + token;
 
-        JsonObjectRequest jsObjRequest = new JsonObjectRequest(Request.Method.GET,pathRequest,null,
+        new makeRequest(Request.Method.GET, pathRequest, token, new JSONObject(),
                 new Response.Listener<JSONObject>() {
                     @Override
                     public void onResponse(final JSONObject response) {
                         Log.d(TAG,"Response: " + response.toString());
 
                         if(para == 0 ) {
-                            try {
-                                makeProjetRequest(response.getJSONArray("projets"));
-                            } catch (JSONException e) {
-                                e.printStackTrace();
-                            }
+                            makeMyGroupeRequest(id);
                         }
                     }
-                },
-                new Response.ErrorListener() {
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-                        Log.d(TAG,"ERROR IN REQUEST" + error.toString());
-
-                        final TextView displayQR = findViewById(R.id.textQRCODE);
-
-                        displayQR.post(new Runnable() {
-                            @Override
-                            public void run() {
-
-                                displayQR.setText(getResources().getString(R.string.request_error));
-                            }
-                        });
-                    }
-                })
-
-        {
-            @Override
-            public String getBodyContentType() {
-                return "application/json; charset=utf-8";
-            }
-
-        };
-        queue.add(jsObjRequest);
+                }, myErrorListener, queue);
     }
 
-    private void makeGroupeRequest(String id) {
-        String pathRequest = url + "/api/groupe/me/droit/"+ id +"?token=" + token;
+    private void makeGroupeRequest(final String id) {
+        String pathRequest = url + "/api/groupe/me/droit/"+ id;// +"?token=" + token;
 
-
-        JsonObjectRequest jsObjRequest = new JsonObjectRequest(Request.Method.GET,pathRequest,null,
+        new makeRequest(Request.Method.GET, pathRequest, token, new JSONObject(),
                 new Response.Listener<JSONObject>() {
                     @Override
                     public void onResponse(final JSONObject response) {
@@ -654,11 +626,11 @@ public class MainActivity extends AppCompatActivity {
                         try {
 
 
-                                if (response.getBoolean("has_right")) {
-                                    myImg.setImageResource(R.drawable.ic_check_green_24dp);
-                                } else {
-                                    myImg.setImageResource(R.drawable.ic_do_not_disturb_alt_black_24dp);
-                                }
+                            if (response.getBoolean("has_right")) {
+                                myImg.setImageResource(R.drawable.ic_check_green_24dp);
+                            } else {
+                                myImg.setImageResource(R.drawable.ic_do_not_disturb_alt_black_24dp);
+                            }
                         } catch(JSONException e) {
                             e.printStackTrace();
                         }
@@ -666,30 +638,10 @@ public class MainActivity extends AppCompatActivity {
 
 
                     }
-                },
-                new Response.ErrorListener() {
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-
-                        Log.d(TAG,"ERROR IN GROUPE REQUEST " + error.toString());
-                    }
-                })
-
-        {
-            @Override
-            public String getBodyContentType() {
-                return "application/json; charset=utf-8";
-            }
-
-        };
-
-        // Access the RequestQueue through your singleton class.
-        queue.add(jsObjRequest);
+                }, myErrorListener, queue);
     }
 
     private void makeRequest(final String id) {
-
-
 
         Handler uiHandler = new Handler(Looper.getMainLooper());
         uiHandler.post(new Runnable(){
@@ -699,27 +651,34 @@ public class MainActivity extends AppCompatActivity {
                 Picasso.get().load(url + "/appareils_image/" + id).into(appImg, new com.squareup.picasso.Callback() {
                     @Override
                     public void onSuccess() {
+                        appImg.setVisibility(View.VISIBLE);
                         findViewById(R.id.loadImg).setVisibility(View.GONE);
+                        retButton.setVisibility(View.VISIBLE);
                     }
 
                     @Override
                     public void onError(Exception e) {
-                        e.printStackTrace();
+                        findViewById(R.id.loadImg).setVisibility(View.GONE);
+                        retButton.setVisibility(View.VISIBLE);
                     }
                 });
             }
         });
 
-        String pathRequest = url + "/api/appareils/"+ id +"?token=" + token;
+        String pathRequest = url + "/api/appareils/"+ id;// +"?token=" + token;
 
         makeButtonInvisble();
 
-
-        JsonObjectRequest jsObjRequest = new JsonObjectRequest(Request.Method.GET,pathRequest,null,
+        new makeRequest(Request.Method.GET, pathRequest, token, new JSONObject(),
                 new Response.Listener<JSONObject>() {
                     @Override
                     public void onResponse(final JSONObject response) {
                         Log.d(TAG,"Response: " + response.toString());
+
+                        appID = id;
+                        //cameraPreview.setVisibility(View.INVISIBLE);
+                        //cameraPreview.setAlpha(0);
+                        findViewById(R.id.layoutInfo).setVisibility(View.VISIBLE);
 
                         try {
                             JSONArray jArray = response.getJSONArray("groupes");
@@ -728,8 +687,19 @@ public class MainActivity extends AppCompatActivity {
                             } else {
                                 myImg.setImageResource(R.drawable.ic_do_not_disturb_alt_black_24dp);
                             }
+
+                            String report = response.getString("report");
+
+                            if(response.getBoolean("is_hs")) {
+
+                                displayReport(report, 0);
+                            } else if(response.getBoolean("is_part_hs")) {
+
+                                displayReport(report, 1);
+                            }
+
                         } catch (JSONException e) {
-                            myImg.setImageResource(0);
+
                             e.printStackTrace();
                         }
 
@@ -744,40 +714,64 @@ public class MainActivity extends AppCompatActivity {
                                 } catch (JSONException e) {
                                     displayQR.setText("PAS DE NOM");
                                 }
+                                displayQR.setVisibility(View.VISIBLE);
                             }
                         });
 
 
                     }
                 },
-                new Response.ErrorListener() {
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-                        Log.d(TAG,"ERROR IN REQUEST" + error.toString());
-
-                        final TextView displayQR = findViewById(R.id.textQRCODE);
-
-                        displayQR.post(new Runnable() {
-                            @Override
-                            public void run() {
-
-                                displayQR.setText(getResources().getString(R.string.request_error));
-                            }
-                        });
-                    }
-                })
-
-        {
-            @Override
-            public String getBodyContentType() {
-                return "application/json; charset=utf-8";
-            }
-
-        };
-
-        // Access the RequestQueue through your singleton class.
-        queue.add(jsObjRequest);
+                myErrorListener, queue);
     }
 
+    private void displayReport(String report, int state) {
+
+        showReport show = new showReport();
+
+        Bundle b = new Bundle();
+        if(state != 0) {
+            b.putString("message", "Attention : " + report);
+        } else {
+            b.putString("message", "Appareil hors service !");
+        }
+
+        show.setArguments(b);
+
+        show.show(getFragmentManager(), TAG);
+
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.main_menu, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.action_settings:
+                // User chose the "Settings" item, show the app settings UI...
+                logout();
+                return true;
+
+            default:
+                // If we got here, the user's action was not recognized.
+                // Invoke the superclass to handle it.
+                return super.onOptionsItemSelected(item);
+
+        }
+    }
+
+    private void logout() {
+
+        PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).edit()
+                .putString("jsonToken","").apply();
+        Intent intent = new Intent(this, LoginActivity.class);// New activity
+        intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        startActivity(intent);
+        finish(); // Call once you redirect to another activity
+    }
 
 }

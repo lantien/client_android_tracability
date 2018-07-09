@@ -8,6 +8,23 @@
     <string name="emprunt">Emprunter</string>
     <string name="rendu">Rendre</string>
 
+    <string name="signaler">incident ?</string>
+
+    <string name="makeReport">decrire l\'incdent ?</string>
+
+    <string name="sendReport">Envoyez</string>
+    <string name="cancel">Annuler</string>
+
+    <string-array name="array_name">
+        <item>Bon</item>
+        <item>Partiel</item>
+        <item>HS</item>
+    </string-array>
+
+    <string name="logout">Se deconnecter</string>
+
+    <string name="retour">Retour</string>
+
     <string name="request_error">request error</string>
 
     <string name="hostname">134.214.236.17</string>

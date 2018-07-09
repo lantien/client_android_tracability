@@ -2,6 +2,7 @@ package com.example.boudalia.platformtracability;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
@@ -21,6 +22,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.UnsupportedEncodingException;
+import java.util.HashMap;
+import java.util.Map;
 
 public class LoginActivity extends AppCompatActivity {
 
@@ -36,20 +39,33 @@ public class LoginActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_login);
 
         url = "http://" + getResources().getString(R.string.hostname) + ":" +
                 getResources().getString(R.string.port) + "/node";
 
+        queue = Volley.newRequestQueue(this);
 
-        Toolbar toolbar = findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
+        try {
+            checkIfLogged();
+        } catch (JSONException e) {
+            setView();
+            e.printStackTrace();
+        }
+
+
+
+
+    }
+
+    private void setView() {
+        setContentView(R.layout.activity_login);
+
 
         Log.d(TAG, "Login activity started");
 
         SSLSocketFactory myCert = new SSLSocketFactory();
 
-        queue = Volley.newRequestQueue(this);
+
 
         //queue = Volley.newRequestQueue(this, new HurlStack(null, myCert.getSocketFactory(this)));
 
@@ -66,7 +82,6 @@ public class LoginActivity extends AppCompatActivity {
                 makeLoginRequest(username.getText().toString(), password.getText().toString());
             }
         });
-
     }
 
     private void makeLoginRequest(String username, String password) {
@@ -82,16 +97,13 @@ public class LoginActivity extends AppCompatActivity {
             e.printStackTrace();
 
         }
-
-        final String mRequestBody = data.toString();
-
-
-        JsonObjectRequest jsObjRequest = new JsonObjectRequest(Request.Method.POST,pathRequest,null,
+        new makeRequest(Request.Method.POST, pathRequest, "", data,
                 new Response.Listener<JSONObject>() {
                     @Override
                     public void onResponse(final JSONObject response) {
 
                         Log.d(TAG,"Response: " + response.toString());
+                        saveToken(response);
                         switchActivity(response);
 
                     }
@@ -102,28 +114,46 @@ public class LoginActivity extends AppCompatActivity {
 
                         Log.d(TAG,"ERROR IN REQUEST" + error.getMessage());
                     }
-                })
+                },
+                queue);
+    }
 
-        {
-            @Override
-            public String getBodyContentType() {
-                return "application/json; charset=utf-8";
-            }
+    private void checkIfLogged() throws JSONException {
+        final String strObj = PreferenceManager.
+                getDefaultSharedPreferences(this).getString("jsonToken","");
 
-            @Override
-            public byte[] getBody() {
-                try {
-                    return mRequestBody == null ? null : mRequestBody.getBytes("utf-8");
-                } catch (UnsupportedEncodingException uee) {
-                    Log.d(TAG, "ERROR IN GET BODY");
-                    return null;
-                }
-            }
+        Log.d(TAG, strObj);
 
-        };
 
-        // Access the RequestQueue through your singleton class.
-        queue.add(jsObjRequest);
+
+        final JSONObject jsonObj = new JSONObject(strObj);
+        String token = jsonObj.getString("tokenJSON");
+
+
+        String pathRequest = url +"/api/test?token=" + token;
+
+        new makeRequest(Request.Method.POST, pathRequest, token, jsonObj,
+                new Response.Listener<JSONObject>() {
+                    @Override
+                    public void onResponse(final JSONObject response) {
+
+                        Log.d(TAG,"Response: " + response.toString());
+                        switchActivity(jsonObj);
+
+                    }
+                },
+                new Response.ErrorListener() {
+                    @Override
+                    public void onErrorResponse(VolleyError error) {
+                        setView();
+                        Log.d(TAG,"ERROR IN REQUEST" + error.getMessage());
+                    }
+                }, queue);
+    }
+
+    private void saveToken(JSONObject token) {
+        PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).edit()
+                .putString("jsonToken",token.toString()).apply();
     }
 
     private void switchActivity(JSONObject token) {
